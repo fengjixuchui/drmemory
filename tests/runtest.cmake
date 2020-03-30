@@ -353,6 +353,10 @@ foreach (str ${patterns})
   # remove comments
   string(REGEX REPLACE "(^|\n)#[^\n]*\n" "\\1" ${str} "${${str}}")
 
+  # Support for ".*" (should we instead switch to full regex support
+  # and make all the files escape their own literals?)
+  string(REGEX REPLACE "%ANY%" ".*" ${str} "${${str}}")
+
   # evaluate conditionals
   # cmake's regex matcher is maximal unfortunately: for now we disallow %
   # inside conditional
@@ -705,6 +709,7 @@ if (resmatch AND NOT TOOL_DR_HEAPSTAT)
       -D TOOL_DR_HEAPSTAT:BOOL=${TOOL_DR_HEAPSTAT}
       -D outpat:STRING=${outpat}
       -D respat:STRING=${respat}
+      -D resmark:STRING=${resmark}
       -D nudge:STRING=${nudge}
       -D VMKERNEL:BOOL=${VMKERNEL}
       -D USE_DRSYMS:BOOL=${USE_DRSYMS}

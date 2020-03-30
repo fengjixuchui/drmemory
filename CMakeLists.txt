@@ -19,11 +19,8 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-# We need 2.8.10.1 for crbug.com/159092
-# (For multi-export-set support for DRMF, we also need >= 2.8.10.)
-# (For Visual Studio generators, we also need >= 2.8.2 for output dir name control.)
-# (For Linux, we also need 2.6.4+ for cmake bug #8639 (asm support broken).)
-cmake_minimum_required(VERSION 2.8.10.1)
+# DR requires 3.7 which means we must also.
+cmake_minimum_required(VERSION 3.7)
 
 include(make/policies.cmake NO_POLICY_SCOPE)
 
@@ -543,7 +540,7 @@ if (WIN32)
     set(DDK_SFX "i386")
   else ()
     set(PROGFILES "$ENV{PROGRAMW6432}")
-    set(PROGFILES32 "$ENV{PROGRAMFILES(x86)}")
+    set(PROGFILES32 "$ENV{PROGRAMFILES\(x86\)}")
     if (X64)
       set(ARCH_SFX "x64")
       set(DDK_SFX "amd64")
@@ -1085,6 +1082,8 @@ add_asm_target(common/${asm_file} asm_utils_src asm_utils_tgt ""
 
 ##################################################
 
+set(DrMemory_INTERNAL ON) # Do not import exported targets.
+
 if (ANDROID)
   # We cache this for us in sub-projects like framework/samples/
   set(TOP_BINARY_DIR ${PROJECT_BINARY_DIR})
@@ -1437,6 +1436,11 @@ endif (USE_DRSYMS)
 if (WIN32)
   # We need to link with ntdll.lib and dbghelp.lib which we get from DR
   if (USER_SPECIFIED_DynamoRIO_DIR)
+    # XXX i#1651: Replace this LOCATION with a generator expression.
+    # This is the only one left.
+    # We may want to drop support for USER_SPECIFIED_DynamoRIO_DIR in any case
+    # which is why no effort was put in to clean this up earlier.
+    cmake_policy(SET CMP0026 OLD)
     get_target_property(libbase drinjectlib LOCATION)
     get_filename_component(libpath ${libbase} PATH)
     set(ntimp_lib "${libpath}/ntdll_imports.lib")
@@ -1721,36 +1725,45 @@ set(DRMF_VERSION_CUR ${DRMF_VERSION_INTEGER}) # Current version
 
 configure_file(framework/public.h
   ${framework_incdir}/drmemory_framework.h)
-configure_file(drmemory/annotations_public.h
-  ${framework_incdir}/drmemory_annotations.h)
-configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations_asm.h
-  ${framework_incdir}/dr_annotations_asm.h)
-configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations.h
-  ${framework_incdir}/dr_annotations.h)
+# TODO DRi#1672: Port DR's annotation infrastructure to AArchXX.
+if (X86)
+  configure_file(drmemory/annotations_public.h
+    ${framework_incdir}/drmemory_annotations.h)
+  configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations_asm.h
+    ${framework_incdir}/dr_annotations_asm.h)
+  configure_file(${DynamoRIO_DIR}/../include/annotations/dr_annotations.h
+    ${framework_incdir}/dr_annotations.h)
+endif ()
 include_directories(${framework_incdir})
 
-# Annotation support using DR's infrastructure (non-Valgrind-style).
-if (UNIX)
-  set(annot_cflags "-O0 -Wno-unused-variable -Wno-return-type")
+if (NOT X86)
+  # TODO DRi#1672: Port DR's annotation infrastructure to AArchXX.
+  set(DR_ANNOTATIONS_SUPPORTED OFF)
 else ()
-  set(annot_cflags "/Od /Ob0 /GL- /wd4715")
-endif ()
-if (UNIX)
-  # DRi#1799: clang prior to 9.0 does not support "asm goto" which is used by
-  # the DR annotation infrastructure.  But, we can't just do a version check
-  # because Apple's clang has a completely separate version number.
-  try_compile(DR_ANNOTATIONS_SUPPORTED ${PROJECT_BINARY_DIR}/try_annot
-    SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
-    ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
-    -DINCLUDE_DIRECTORIES=${framework_incdir}
-    -DCMAKE_C_FLAGS:STRING="${annot_cflags}")
-  if (DR_ANNOTATIONS_SUPPORTED)
-    message(STATUS "DR annotations are supported")
+  # Annotation support using DR's infrastructure (non-Valgrind-style).
+  if (UNIX)
+    set(annot_cflags "-O0 -Wno-unused-variable -Wno-return-type")
   else ()
-    message(STATUS "DR annotations are NOT supported: probably this is clang<9.0")
+    set(annot_cflags "/Od /Ob0 /GL- /wd4715")
   endif ()
-else ()
-  set(DR_ANNOTATIONS_SUPPORTED ON)
+  if (UNIX)
+    # DRi#1799: clang prior to 9.0 does not support "asm goto" which is used by
+    # the DR annotation infrastructure.  But, we can't just do a version check
+    # because Apple's clang has a completely separate version number.
+    try_compile(DR_ANNOTATIONS_SUPPORTED ${PROJECT_BINARY_DIR}/try_annot
+      SOURCES ${PROJECT_SOURCE_DIR}/tests/memlayout.cpp
+      ${PROJECT_SOURCE_DIR}/drmemory/annotations_public.c CMAKE_FLAGS
+      -DINCLUDE_DIRECTORIES=${framework_incdir}
+      -DCMAKE_C_FLAGS:STRING="${annot_cflags}"
+      OUTPUT_VARIABLE try_output)
+    if (DR_ANNOTATIONS_SUPPORTED)
+      message(STATUS "DR annotations are supported")
+    else ()
+      message(STATUS "DR annotations are NOT supported: probably this is clang<9.0: |${try_output}|")
+    endif ()
+  else ()
+    set(DR_ANNOTATIONS_SUPPORTED ON)
+  endif ()
 endif ()
 
 ###########################################################################
@@ -1784,29 +1797,29 @@ else ()
 endif ()
 
 function (create_drrun_file frontend file_out name) # option list follows name
-  get_target_property(frontend_path ${frontend} LOCATION${location_suffix})
-  get_filename_component(frontend_name ${frontend_path} NAME)
   if (ANDROID AND TOOL_DR_MEMORY)
     set(frontend_name ${toolname}) # point at script, not launcher
   endif ()
   if (BUILDING_SUB_PACKAGE)
-    set(DRRUN_TOP "FRONTEND_REL=${INSTALL_PREFIX}/${BUILD_BIN}/${frontend_name}")
+    set(DRRUN_TOP "FRONTEND_REL=${INSTALL_PREFIX}/${BUILD_BIN}")
   else ()
-    set(DRRUN_TOP "FRONTEND_REL=../${BUILD_BIN}/${frontend_name}")
+    set(DRRUN_TOP "FRONTEND_REL=../${BUILD_BIN}")
   endif ()
   set(DRRUN_FILE "${DRRUN_DIR}/${name}${DRRUN_SFX}")
-  file(WRITE  ${DRRUN_FILE} "# Dr. Memory tool config file\n")
-  file(APPEND ${DRRUN_FILE} "${DRRUN_TOP}\n")
-  file(APPEND ${DRRUN_FILE} "TOOL_OP=-dr\n")
-  file(APPEND ${DRRUN_FILE} "TOOL_OP_DR_PATH\n")
-  file(APPEND ${DRRUN_FILE} "TOOL_OP_DR_BUNDLE=-dr_ops\n")
-  foreach (op ${ARGN})
-    file(APPEND ${DRRUN_FILE} "TOOL_OP=${op}\n")
-  endforeach ()
-  if (X64)
-    file(APPEND ${DRRUN_FILE}
-      "USER_NOTICE=Support for 64-bit applications under this tool is experimental.  Please report issues to http://drmemory.org/issues.\n")
+  set(DRRUN_CONTENTS "# Dr. Memory tool config file\n")
+  if (ANDROID AND TOOL_DR_MEMORY)
+    # Point at script, not launcher.
+    set(DRRUN_CONTENTS "${DRRUN_CONTENTS}${DRRUN_TOP}/${frontend}>\n")
+  else ()
+    set(DRRUN_CONTENTS "${DRRUN_CONTENTS}${DRRUN_TOP}/$<TARGET_FILE_NAME:${frontend}>\n")
   endif ()
+  set(DRRUN_CONTENTS "${DRRUN_CONTENTS}TOOL_OP=-dr\n")
+  set(DRRUN_CONTENTS "${DRRUN_CONTENTS}TOOL_OP_DR_PATH\n")
+  set(DRRUN_CONTENTS "${DRRUN_CONTENTS}TOOL_OP_DR_BUNDLE=-dr_ops\n")
+  foreach (op ${ARGN})
+    set(DRRUN_CONTENTS "${DRRUN_CONTENTS}TOOL_OP=${op}\n")
+  endforeach ()
+  file(GENERATE OUTPUT ${DRRUN_FILE} CONTENT "${DRRUN_CONTENTS}")
   install(FILES "${DRRUN_FILE}" DESTINATION "${DRRUN_INSTALL}/")
   set(${file_out} ${DRRUN_FILE} PARENT_SCOPE)
 
@@ -1873,7 +1886,10 @@ SET_PROPERTY(TARGET ${ARGV0} PROPERTY MAP_IMPORTED_CONFIG_RELMINSIZE RelWithDebI
   endif (NOT DEBUG_BUILD)
   # For install we want both debug and release:
   set(exported_targets_append "${exported_targets_append}${toadd}")
-  set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
+  # Hack to avoid "no parent scope" complaint.
+  if (NOT "${ARGV}" MATCHES "drmemory_annotations")
+    set(exported_targets_append "${exported_targets_append}" PARENT_SCOPE)
+  endif ()
 endmacro(export_target)
 
 if (DR_ANNOTATIONS_SUPPORTED)
@@ -1924,6 +1940,28 @@ endif (TOOL_DR_MEMORY)
 
 if (BUILD_TOOL_TESTS)
   add_subdirectory(tests/framework)
+
+  # Test using our exported config.
+  if (DEBUG)
+    set(debug_cfg -DCMAKE_BUILD_TYPE=Debug)
+  else ()
+    set(debug_cfg -DCMAKE_BUILD_TYPE=RelWithDebInfo)
+  endif ()
+  set(drmf_bindir "${PROJECT_BINARY_DIR}/framework/samples")
+  file(COPY "${PROJECT_SOURCE_DIR}/framework/samples/strace.c"
+    DESTINATION "${drmf_bindir}")
+  add_test(drmf_proj ${CMAKE_CTEST_COMMAND}
+    --build-and-test "${drmf_bindir}"
+    "${PROJECT_BINARY_DIR}/tests/drmf_proj"
+    --build-generator ${CMAKE_GENERATOR}
+    --build-project DRMF_samples # Needed for VS generators.
+    --build-makeprogram ${CMAKE_MAKE_PROGRAM}
+    --build-options ${debug_cfg} -DDrMemoryFramework_DIR:PATH=${framework_dir}
+    -DDynamoRIO_DIR:PATH=${DynamoRIO_DIR})
+  if (UNIX AND X86 AND NOT X64)
+    set_tests_properties(drmf_proj PROPERTIES ENVIRONMENT
+      "CFLAGS=-m32;CXXFLAGS=-m32")
+  endif ()
 
   if (TOOL_DR_MEMORY)
     # unit tests
@@ -2238,10 +2276,14 @@ endif (BUILDING_SUB_PACKAGE)
 # DRMF install rules
 install(FILES
   ${framework_incdir}/drmemory_framework.h
-  ${framework_incdir}/drmemory_annotations.h
-  ${framework_incdir}/dr_annotations.h
-  ${framework_incdir}/dr_annotations_asm.h
   DESTINATION ${DRMF_INSTALL_INC})
+if (DR_ANNOTATIONS_SUPPORTED)
+  install(FILES
+    ${framework_incdir}/drmemory_annotations.h
+    ${framework_incdir}/dr_annotations.h
+    ${framework_incdir}/dr_annotations_asm.h
+    DESTINATION ${DRMF_INSTALL_INC})
+endif ()
 install(FILES ${framework_dir}/DrMemoryFrameworkConfigVersion.cmake
   ${framework_dir}/DrMemoryFrameworkConfig.cmake
   DESTINATION ${DRMF_INSTALL})
@@ -2269,9 +2311,14 @@ install(EXPORT ${exported_targets_name} DESTINATION ${DRMF_INSTALL})
 # We do this at install time once we have all binaries built, as it's a pain
 # to individually add post-build commands.
 if (WIN32)
-  get_target_property(verinfo_path verinfo LOCATION${location_suffix})
   install(CODE "include(\"${PROJECT_SOURCE_DIR}/make/rccheck.cmake\")")
-  install(CODE "check_version_resources(\"${PROJECT_BINARY_DIR}\" \"${verinfo_path}\")")
+  # We'd need cmake 3.14+ and CMP0087=NEW for a generator expression to work
+  # directly in install(CODE).  We instead have to make a file.
+  set(verinfo_locator "verinfo_locator.cmake")
+  file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${verinfo_locator}" CONTENT
+"set(VERINFO \"$<TARGET_FILE:verinfo>\")\n")
+  install(CODE "include(\"${CMAKE_CURRENT_BINARY_DIR}/${verinfo_locator}\")")
+  install(CODE "check_version_resources(\"${PROJECT_BINARY_DIR}\" \"\${VERINFO}\")")
 endif ()
 
 ###########################################################################
