@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
 # Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
 # **********************************************************
 
@@ -207,11 +207,7 @@ if (NOT UNIX)
   # We also avoid msvcrt*.dll differences by using static libc (/MT).
   # But for cygwin to find operators we need /MD (until we have online
   # syms)
-  if (USE_DRSYMS)
-    set(LIBC_FLAG "/MT")
-  else (USE_DRSYMS)
-    set(LIBC_FLAG "/MD")
-  endif (USE_DRSYMS)
+  set(LIBC_FLAG "/MT")
   string(TOUPPER "${CMAKE_BUILD_TYPE}" CMAKE_BUILD_TYPE_UPPER)
   string(REGEX REPLACE "/MDd?" "${LIBC_FLAG}" CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}
     "${CMAKE_C_FLAGS_${CMAKE_BUILD_TYPE_UPPER}}")
@@ -293,11 +289,7 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
   # script ops last since using as hack for nudge test app
   # we request callstacks w/ file:line on separate line for matching our templates
   # we include absaddr and mod+offs for easier debugging of problems
-  if (USE_DRSYMS)
-    set(drmem_ops -callstack_style 0x27 -no_results_to_stderr ${drmem_ops})
-  else (USE_DRSYMS)
-    set(drmem_ops -callstack_style 0x27 ${drmem_ops})
-  endif (USE_DRSYMS)
+  set(drmem_ops -callstack_style 0x27 -no_results_to_stderr ${drmem_ops})
   if (NOT "${drmem_ops}" STREQUAL "")
     set(cmd ${cmd} ${drmem_ops})
   endif ()
@@ -367,7 +359,6 @@ function(newtest_nobuild_allparams test exe test_ops drmem_ops dr_ops postproces
     -D resmark:STRING=${resmark}
     -D nudge:STRING=${nudge}
     -D VMKERNEL:BOOL=${VMKERNEL}
-    -D USE_DRSYMS:BOOL=${USE_DRSYMS}
     -D X64:BOOL=${X64}
     -D ARM:BOOL=${ARM}
     -D ANDROID:BOOL=${ANDROID}
@@ -507,6 +498,10 @@ newtest_ex(operators operators.cpp "" "${operators_drm_ops}" "${operators_dr_ops
   "ANY")
 newtest(float float.c)
 newtest(selfmod selfmod.c)
+if (LINUX)
+  newtest(mmap mmap.c)
+  target_link_libraries(mmap drmemory_annotations)
+endif ()
 newtest(patterns patterns.c)
 newtest_ex(state state.c "" "" "" OFF "" "ANY")
 
@@ -593,10 +588,10 @@ else (UNIX)
 endif (UNIX)
 
 if (TOOL_DR_MEMORY)
-  # We turn off blacklist b/c it results in potential errors in the child,
+  # We turn off blocklist b/c it results in potential errors in the child,
   # causing runtest.cmake to pick the child's log instead of parent's
   # (it does it by size)!
-  newtest_ex(procterm procterm.c "" "-lib_blacklist_frames;0" "" OFF "" 0)
+  newtest_ex(procterm procterm.c "" "-lib_blocklist_frames;0" "" OFF "" 0)
   if (WIN32)
     newtest_nobuild(procterm.nativeparent procterm "" "-native_parent" ""
       OFF "procterm.nativeparent")
@@ -666,11 +661,9 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild(reachable cs2bug "" "-show_reachable" "" OFF "")
   newtest_nobuild(malloc_callstacks cs2bug "" "-light;-malloc_callstacks" ""
     OFF "cs2bug.light")
-  if (USE_DRSYMS)
-    if (NOT X64) # FIXME i#111: failing on Travis
-      newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
-    endif ()
-  endif (USE_DRSYMS)
+  if (NOT X64) # FIXME i#111: failing on Travis
+    newtest_nobuild(nosymcache malloc "" "-no_use_symcache" "" OFF malloc)
+  endif ()
   if (NOT ARM) # XXX i#1726: port to ARM
     newtest_nobuild(strict_bitops bitfield "" "-strict_bitops" "" OFF "bitfield.strict")
   endif ()
@@ -687,11 +680,11 @@ if (TOOL_DR_MEMORY)
   newtest_nobuild_ex(free.exitcode free "" "-exit_code_if_errors;42" "" OFF "free" 42 "")
   newtest_nobuild_ex(hello.exitcode hello "" "-exit_code_if_errors;4" "" OFF "hello" 0 "")
   if (NOT ARM) # XXX i#1726: port to ARM
-    newtest_nobuild_ex(blacklist_uninit.op registers ""
-      "-check_uninit_blacklist;registers*" "" OFF "registers.blacklist" 0 "")
-    newtest_nobuild_ex(blacklist_uninit.supp registers ""
-      "-suppress;{DRMEMORY_CTEST_SRC_DIR}/registers.blacklist.suppress"
-      "" OFF "registers.blacklist" 0 "")
+    newtest_nobuild_ex(blocklist_uninit.op registers ""
+      "-check_uninit_blocklist;registers*" "" OFF "registers.blocklist" 0 "")
+    newtest_nobuild_ex(blocklist_uninit.supp registers ""
+      "-suppress;{DRMEMORY_CTEST_SRC_DIR}/registers.blocklist.suppress"
+      "" OFF "registers.blocklist" 0 "")
   endif ()
   # XXX: ideally we'd run drcov2lcov and test the output too.  For now this
   # is just a test of the coverage data line output.
@@ -754,37 +747,21 @@ if (TOOL_DR_MEMORY)
     set(supp_fileB "{DRMEMORY_CTEST_SRC_DIR}/suppressB.win.suppress")
   endif (UNIX)
   # test multiple supp files (i#574)
-  if (USE_DRSYMS)
-    newtest_nobuild(suppress suppress ""
-      "-suppress;${supp_fileA};-suppress;${supp_fileB};-no_callstack_exe_hide;-callstack_modname_hide;;"
-      "" OFF "")
-  else (USE_DRSYMS)
-    newtest_nobuild(suppress suppress ""
-      "-suppress;${supp_fileA};-suppress;${supp_fileB}" "" OFF "")
-  endif (USE_DRSYMS)
+  newtest_nobuild(suppress suppress ""
+    "-suppress;${supp_fileA};-suppress;${supp_fileB};-no_callstack_exe_hide;-callstack_modname_hide;;"
+    "" OFF "")
 
   # i#80: test suppression file generation and use via multiple runs
   # since we need the name of the suppress file, runtest.cmake must do
   # the second run.  it looks for "suppress" with no "-suppress" option,
   # rather than taking explicit params, and for the 2nd run uses the
   # suppress output files
-  if (USE_DRSYMS)
-    newtest_nobuild(suppress-genoffs suppress ""
-      "-no_gen_suppress_syms;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
-    newtest_nobuild(suppress-gensyms suppress ""
-      "-no_gen_suppress_offs;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
-  else (USE_DRSYMS)
-    newtest_nobuild(suppress-genoffs suppress "" "-no_gen_suppress_syms" "" OFF "")
-    newtest_nobuild(suppress-gensyms suppress "" "-no_gen_suppress_offs" "" OFF "")
-  endif (USE_DRSYMS)
+  newtest_nobuild(suppress-genoffs suppress ""
+    "-no_gen_suppress_syms;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
+  newtest_nobuild(suppress-gensyms suppress ""
+    "-no_gen_suppress_offs;-no_callstack_exe_hide;-callstack_modname_hide;;" "" OFF "")
 
   set(nudge_test_args "")
-
-  # FIXME i#446: no support yet for post-process w/ drsyms
-  if (UNIX AND NOT USE_DRSYMS)
-    # test -skip_results + -results (PR 575481)
-    newtest_nobuild(skip-results malloc "" "-skip_results" "" ON "")
-  endif ()
 
   # For -perturb_only we do not have a .res file so that runtest.cmake
   # won't wait for a message showing that results are ready
@@ -813,42 +790,40 @@ if (TOOL_DR_MEMORY)
     #  add_dependencies(rtl_memory_zones ntdll_imports)
     #endif ()
 
-    if (USE_DRSYMS) # cygwin build can't see static malloc routines
-      tobuild(wincrtdbg wincrt.cpp)
-      append_test_compile_flags(wincrtdbg "/MTd")
-      newtest_nobuild(wincrtdbg wincrtdbg "" "-redzone_size;64" "" OFF "")
-      # i#2030: we do not support wrap tests on x64
-      if (NOT X64)
-        newtest_nobuild(wrap_wincrtdbg wincrtdbg "" "-no_replace_malloc" "" OFF
-          "wincrtdbg")
-      endif ()
+    tobuild(wincrtdbg wincrt.cpp)
+    append_test_compile_flags(wincrtdbg "/MTd")
+    newtest_nobuild(wincrtdbg wincrtdbg "" "-redzone_size;64" "" OFF "")
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild(wrap_wincrtdbg wincrtdbg "" "-no_replace_malloc" "" OFF
+        "wincrtdbg")
+    endif ()
 
-      newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)
-      newtest_custbuild(mallocMD malloc.c "/MD" malloc)
+    newtest_custbuild(mallocMTd malloc.c "/MTd" malloc)
+    newtest_custbuild(mallocMD malloc.c "/MD" malloc)
 
-      # C++ tests with other libc configs
-      newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      newtest_custbuild(cs2bugMTdZI cs2bug.cpp "/ZI /MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      newtest_custbuild(cs2bugMD cs2bug.cpp "/MD ${cs2bug_flags}" ${cs2bug_res})
-      newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
-      # i#2030: we do not support wrap tests on x64
-      if (NOT X64)
-        newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF
-          "cs2bugMTd")
-      endif ()
+    # C++ tests with other libc configs
+    newtest_custbuild(cs2bugMTd cs2bug.cpp "/MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
+    newtest_custbuild(cs2bugMTdZI cs2bug.cpp "/ZI /MTd /DSKIP_MISMATCH_DTR" cs2bugMTd)
+    newtest_custbuild(cs2bugMD cs2bug.cpp "/MD ${cs2bug_flags}" ${cs2bug_res})
+    newtest_custbuild(cs2bugMDd cs2bug.cpp "/MDd /DSKIP_MISMATCH_DTR" cs2bugMTd)
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild(wrap_cs2bugMTd cs2bugMTd "" "-no_replace_malloc" "" OFF
+        "cs2bugMTd")
+    endif ()
 
-      # Test i#607 part D
-      tobuild(operatorsMDd operators.cpp)
-      append_test_compile_flags(operatorsMDd "/MDd")
-      newtest_nobuild_ex(operatorsMDd operatorsMDd "" "" "" OFF operators
-        # ignore exit code (b/c -replace_malloc calls dr_exit_process(1))
-        "ANY" "")
-      # i#2030: we do not support wrap tests on x64
-      if (NOT X64)
-        newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
-          "-no_replace_malloc" "" OFF operators 0 "")
-      endif ()
-    endif (USE_DRSYMS)
+    # Test i#607 part D
+    tobuild(operatorsMDd operators.cpp)
+    append_test_compile_flags(operatorsMDd "/MDd")
+    newtest_nobuild_ex(operatorsMDd operatorsMDd "" "" "" OFF operators
+      # ignore exit code (b/c -replace_malloc calls dr_exit_process(1))
+      "ANY" "")
+    # i#2030: we do not support wrap tests on x64
+    if (NOT X64)
+      newtest_nobuild_ex(wrap_operatorsMDd operatorsMDd ""
+        "-no_replace_malloc" "" OFF operators 0 "")
+    endif ()
 
     if (GCC)
       # We have issues w/ static libstdc++ FPO so we ask for better callstacks (i#783)
@@ -872,8 +847,11 @@ if (TOOL_DR_MEMORY)
       "" OFF "" 0)
     newtest_nobuild(handle_only handle ""
       "-handle_leaks_only" "" OFF "handle_only")
-    # XXX i#1320: have runtest.cmake check potential_errors.txt too
-    newtest_ex(blacklist blacklist.cpp "" "-lib_blacklist_frames;1" "" OFF "" 0)
+    # XXX i#1320: have runtest.cmake check potential_errors.txt too.
+    # We set the blocklist as a sanity check that it does not clear the default
+    # list.
+    newtest_ex(blocklist blocklist.cpp ""
+      "-lib_blocklist_frames;1;-lib_blocklist;nomatch" "" OFF "" 0)
   endif (WIN32)
 
   newtest(realloc realloc.c)
@@ -964,7 +942,7 @@ if (NOT ARM) # XXX i#1726: port to ARM
     "${nudge_test_args}--;${infloop_path}" "" OFF "")
 endif ()
 if (TOOL_DR_MEMORY AND WIN32)
-  # See above for why passing -lib_blacklist_frames 0.
+  # See above for why passing -lib_blocklist_frames 0.
   set(nudge_handle_test_args "-leaks_only;-no_count_leaks;-check_handle_leaks;")
   newtest_nobuild(nudge_handle run_app_in_bg
     "-out;./nudge-handle-out"
@@ -1001,27 +979,30 @@ file(REMOVE \${${locvar_name}})\n")
 endif (WIN32)
 
 if (TOOL_DR_MEMORY)
-  # We call this "whitelist_app" to more easily pattern-match vs its lib.
+  # We call this "allowlist_app" to more easily pattern-match vs its lib.
   # XXX i#1320: have runtest.cmake check potential_errors.txt too.
-  newtest_ex(whitelist_app whitelist.cpp ""
+  newtest_ex(allowlist_app allowlist.cpp ""
     # Exclude the lib's errors
-    "-lib_whitelist;*whitelist_app*;-lib_whitelist_frames;1"
-    "" OFF "whitelist" 0)
-  tobuild_lib(whitelist_lib whitelist_lib.cpp "" "")
-  target_link_libraries(whitelist_app whitelist_lib)
-  newtest_nobuild(whitelist_justlib whitelist_app ""
+    "-lib_allowlist;*allowlist_app*;-lib_allowlist_frames;1"
+    "" OFF "allowlist" 0)
+  tobuild_lib(allowlist_lib allowlist_lib.cpp "" "")
+  target_link_libraries(allowlist_app allowlist_lib)
+  newtest_nobuild(allowlist_justlib allowlist_app ""
     # Exclude the app's errors
-    "-lib_whitelist;*whitelist_lib*;-lib_whitelist_frames;1"
-    "" OFF "whitelist_justlib")
-  newtest_nobuild(whitelist_src whitelist_app ""
-    # Test -src_whitelist
-    "-src_whitelist;*whitelist.cpp;-src_whitelist_frames;1"
-    "" OFF "whitelist")
-  newtest_nobuild(whitelist_srclib whitelist_app ""
-    # Test -src_whitelist in combination with -lib_whitelist.
+    "-lib_allowlist;*allowlist_lib*;-lib_allowlist_frames;1"
+    "" OFF "allowlist_justlib")
+  newtest_nobuild(allowlist_src allowlist_app ""
+    # Test -src_allowlist
+    "-src_allowlist;*allowlist.cpp;-src_allowlist_frames;1"
+    "" OFF "allowlist")
+  newtest_nobuild(allowlist_srclib allowlist_app ""
+    # Test -src_allowlist in combination with -lib_allowlist.
     # Not a great test as the lib selects both errors anyway.
-    "-lib_whitelist;*whitelist*;-lib_whitelist_frames;1;-src_whitelist;*whitelist.cpp;-src_whitelist_frames;1"
-    "" OFF "whitelist")
+    "-lib_allowlist;*allowlist*;-lib_allowlist_frames;1;-src_allowlist;*allowlist.cpp;-src_allowlist_frames;1"
+    "" OFF "allowlist")
+  newtest_nobuild(blocklist_nolib allowlist_app ""
+    "-lib_blocklist;*allowlist_lib*;-lib_blocklist_frames;1"
+    "" OFF "allowlist")
 endif (TOOL_DR_MEMORY)
 
 if (APPLE)
@@ -1063,9 +1044,9 @@ else ()
     "" OFF "track_origins" 0)
   if (WIN32)
     newtest_ex(handle handle.cpp ""
-      "-unaddr_only;-check_gdi;-check_handle_leaks;-lib_blacklist_frames;0" ""
+      "-unaddr_only;-check_gdi;-check_handle_leaks;-lib_blocklist_frames;0" ""
       OFF "" 0)
-    newtest_ex(procterm procterm.c "" "-unaddr_only;-lib_blacklist_frames;0" "" OFF
+    newtest_ex(procterm procterm.c "" "-unaddr_only;-lib_blocklist_frames;0" "" OFF
       "procterm.addronly" 0)
   endif (WIN32)
 

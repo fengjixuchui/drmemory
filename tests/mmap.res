@@ -1,5 +1,5 @@
 # **********************************************************
-# Copyright (c) 2013 Google, Inc.  All rights reserved.
+# Copyright (c) 2021 Google, Inc.  All rights reserved.
 # **********************************************************
 #
 # Dr. Memory: the memory debugger
@@ -18,13 +18,5 @@
 # License along with this library; if not, write to the Free Software
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
-~~Dr.M~~ NO ERRORS FOUND:
-~~Dr.M~~       0 unique,     0 total unaddressable access(es)
-~~Dr.M~~       0 unique,     0 total uninitialized access(es)
-~~Dr.M~~       0 unique,     0 total invalid heap argument(s)
-~~Dr.M~~       0 unique,     0 total GDI usage error(s)
-~~Dr.M~~       0 unique,     0 total warning(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of leak(s)
-~~Dr.M~~       0 unique,     0 total,      0 byte(s) of possible leak(s)
-~~Dr.M~~ ERRORS IGNORED:
-~~Dr.M~~       1 potential error(s) (suspected false positives)
+Error #1: UNADDRESSABLE ACCESS beyond heap bounds: writing 1 byte(s)
+mmap.c:53

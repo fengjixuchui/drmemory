@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2020 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -958,12 +958,12 @@ instru_event_bb_app2app(void *drcontext, void *tag, instrlist_t *bb,
     *user_data = (void *) bi;
 
     if (options.check_uninitialized &&
-        options.check_uninit_blacklist[0] != '\0') {
+        options.check_uninit_blocklist[0] != '\0') {
         /* We assume no elision across modules here, so we can just pass the tag */
-        bi->mark_defined = module_is_on_check_uninit_blacklist(dr_fragment_app_pc(tag));
+        bi->mark_defined = module_is_on_check_uninit_blocklist(dr_fragment_app_pc(tag));
         DOLOG(3, {
             if (bi->mark_defined)
-                LOG(3, "module is on uninit blacklist: always defined\n");
+                LOG(3, "module is on uninit blocklist: always defined\n");
         });
     }
 
@@ -1005,7 +1005,6 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
 
     memlayout_handle_new_block(drcontext, tag);
 
-#ifdef USE_DRSYMS
     /* symbol of each bb is very useful for debugging */
     DOLOG(3, {
         char buf[128];
@@ -1019,7 +1018,6 @@ instru_event_bb_analysis(void *drcontext, void *tag, instrlist_t *bb,
             LOG(1, "%s\n", buf);
         }
     });
-#endif
 #ifdef TOOL_DR_MEMORY
     DOLOG(4, {
         if (options.shadowing) {

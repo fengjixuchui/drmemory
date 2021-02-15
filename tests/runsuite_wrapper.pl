@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 # **********************************************************
-# Copyright (c) 2016-2020 Google, Inc.  All rights reserved.
+# Copyright (c) 2016-2021 Google, Inc.  All rights reserved.
 # **********************************************************
 
 # Dr. Memory: the memory debugger
@@ -183,7 +183,6 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'malloc_callstacks' => 1,
                 'app_suite.pattern' => 1,
                 'app_suite' => 1,
-                'umbra_client_faulty_redzone' => 1, # i#2341
                 # TODO i#2180/i#2334: evaluate why failing on GA CI.
                 'cs2bug' => 1,
                 'reachable' => 1,
@@ -195,7 +194,6 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'gdi' => 1,
                 'handle' => 1,
                 'handle_only' => 1,
-                'blacklist' => 1,
                 'pcache-use' => 1,
                 'drsyscall_test' => 1,
                 'strace_test' => 1,
@@ -212,6 +210,8 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'wrap_cs2bugMTd' => 1,
                 'wrap_operatorsMDd' => 1,
                 'leak_string' => 1,
+                # TODO i#2375: Fix DR to avoid test failures.
+                'umbra_client_faulty_redzone' => 1,
                 );
             # FIXME i#2180: ignoring certain AppVeyor x64-full-mode failures until
             # we get all tests passing.
@@ -235,7 +235,6 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 'gdi' => 1,
                 'syscalls_win' => 1,
                 'handle_only' => 1,
-                'blacklist' => 1,
                 'nudge' => 1,
                 'syscall_file_all' => 1,
                 'syscall_file_gen' => 1,
@@ -250,10 +249,10 @@ for (my $i = 0; $i <= $#lines; ++$i) {
                 # TODO i#2180/i#2334: extra uninit but not printed out on CI!
                 'nosyms' => 1,
                 # TODO i#2180/i#2334: extra potential error but not printed out on CI!
-                'whitelist_app' => 1,
-                'whitelist_justlib' => 1,
-                'whitelist_src' => 1,
-                'whitelist_srclib' => 1,
+                'allowlist_app' => 1,
+                'allowlist_justlib' => 1,
+                'allowlist_src' => 1,
+                'allowlist_srclib' => 1,
                 );
         } elsif ($^O eq 'darwin' || $^O eq 'MacOS') {
             %ignore_failures_32 = ('malloc' => 1); # i#2038

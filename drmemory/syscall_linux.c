@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2010-2017 Google, Inc.  All rights reserved.
+ * Copyright (c) 2010-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2009-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -174,37 +174,37 @@ handle_clone(void *drcontext, dr_mcontext_t *mc)
 #define PRCTL_NAME_SZ 16 /* from man page */
 
 static void
-check_prctl_whitelist(byte *prctl_arg1)
+check_prctl_allowlist(byte *prctl_arg1)
 {
     /* disable instrumentation on seeing prctl(PR_SET_NAME) that does not
      * match any of the specified ,-separated names (PR 574018)
      */
     char nm[PRCTL_NAME_SZ+1];
-    ASSERT(options.prctl_whitelist[0] != '\0', "caller should check for empty op");
+    ASSERT(options.prctl_allowlist[0] != '\0', "caller should check for empty op");
     if (safe_read(prctl_arg1, PRCTL_NAME_SZ, nm)) {
-        bool on_whitelist = false;
+        bool on_allowlist = false;
         char *s, *next;
-        char *list_end = options.prctl_whitelist + strlen(options.prctl_whitelist);
+        char *list_end = options.prctl_allowlist + strlen(options.prctl_allowlist);
         size_t white_sz;
         NULL_TERMINATE_BUFFER(nm);
         LOG(1, "prctl set name %s\n", nm);
-        s = options.prctl_whitelist;
+        s = options.prctl_allowlist;
         while (s < list_end) {
             next = strchr(s, ',');
             if (next == NULL)
                 white_sz = (list_end - s);
             else
                 white_sz = (next - s);
-            LOG(2, "comparing \"%s\" with whitelist entry \"%.*s\" sz=%d\n",
+            LOG(2, "comparing \"%s\" with allowlist entry \"%.*s\" sz=%d\n",
                 nm, white_sz, s, white_sz);
             if (strncmp(nm, s, white_sz) == 0) {
-                LOG(0, "prctl name %s matches whitelist\n", nm);
-                on_whitelist = true;
+                LOG(0, "prctl name %s matches allowlist\n", nm);
+                on_allowlist = true;
                 break;
             }
             s += white_sz + 1 /* skip , itself */;
         }
-        if (!on_whitelist) {
+        if (!on_allowlist) {
             /* ideally: suspend world, then set options, then flush
              * w/o resuming.
              * FIXME: just setting options is unsafe if another thread
@@ -237,8 +237,8 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
     switch (request) {
     case PR_SET_NAME:
     case PR_GET_NAME:
-        if (request == PR_SET_NAME && options.prctl_whitelist[0] != '\0')
-            check_prctl_whitelist((byte *)arg1);
+        if (request == PR_SET_NAME && options.prctl_allowlist[0] != '\0')
+            check_prctl_allowlist((byte *)arg1);
         break;
     }
 }
@@ -246,23 +246,7 @@ handle_pre_prctl(void *drcontext, dr_mcontext_t *mc)
 static void
 handle_pre_execve(void *drcontext)
 {
-#ifndef USE_DRSYMS
-    /* PR 453867: tell postprocess.pl to watch for new logdir and
-     * fork a new copy.
-     * FIXME: what if syscall fails?  Punting on that for now.
-     * Note that if it fails and then a later one succeeds, postprocess.pl
-     * will replace the first with the last.
-     */
-    char logdir[MAXIMUM_PATH]; /* one reason we're not inside os_post_syscall() */
-    size_t bytes_read = 0;
-    /* Not using safe_read() since we want a partial read if hits page boundary */
-    dr_safe_read((void *) dr_syscall_get_param(drcontext, 0),
-                 BUFFER_SIZE_BYTES(logdir), logdir, &bytes_read);
-    if (bytes_read < BUFFER_SIZE_BYTES(logdir))
-        logdir[bytes_read] = '\0';
-    NULL_TERMINATE_BUFFER(logdir);
-    ELOGF(0, f_fork, "EXEC path=%s\n", logdir);
-#endif
+    /* Nothing. */
 }
 
 /* for tasks unrelated to shadowing that are common to all tools */
@@ -305,17 +289,6 @@ os_shared_post_syscall(void *drcontext, cls_syscall_t *pt, drsys_sysnum_t sysnum
             report_child_thread(drcontext, child);
             break;
         }
-        /* else, fall through */
-    }
-    case SYS_fork: {
-#ifndef USE_DRSYMS
-        /* PR 453867: tell postprocess.pl to not exit until it sees a message
-         * from the child starting up.
-         */
-        process_id_t child = dr_syscall_get_result(drcontext);
-        if (child != 0)
-            ELOGF(0, f_fork, "FORK child=%d\n", child);
-#endif
         break;
     }
     }

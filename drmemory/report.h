@@ -1,5 +1,5 @@
 /* **********************************************************
- * Copyright (c) 2011-2015 Google, Inc.  All rights reserved.
+ * Copyright (c) 2011-2021 Google, Inc.  All rights reserved.
  * Copyright (c) 2008-2010 VMware, Inc.  All rights reserved.
  * **********************************************************/
 
@@ -32,7 +32,7 @@
 /* A prefix for supplying additional info on a reported error beyond
  * the primary line, timestamp line, and callstack itself (from PR 535568)
  */
-#define INFO_PFX IF_DRSYMS_ELSE("Note: ", "  info: ")
+#define INFO_PFX "Note: "
 
 void
 report_init(void);
@@ -131,6 +131,6 @@ void
 report_child_thread(void *drcontext, thread_id_t child);
 
 bool
-module_is_on_check_uninit_blacklist(app_pc pc);
+module_is_on_check_uninit_blocklist(app_pc pc);
 
 #endif /* _REPORT_H_ */
